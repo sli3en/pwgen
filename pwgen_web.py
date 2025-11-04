@@ -30,133 +30,174 @@ HTML_TEMPLATE = """<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>pwgen web</title>
   <style>
-    /* ---------- БАЗА / ТЕМЫ ---------- */
+    /* =========================
+       Доступная цветовая схема
+       ========================= */
     :root{
+      /* База */
+      --bg:#0b0f1a;                /* глубже и темнее: лучше контраст */
+      --surface:#0f1722;           /* карточки/поля */
+      --glass: rgba(255,255,255,.06);
+      --stroke: #253043;           /* чёткий бордер на тёмном фоне */
+      --text:#e6eaf0;              /* основной текст */
+      --muted:#b0bbcc;             /* вторичный текст */
+      --muted-weak:#8a97ad;
+      --ok:#10b981; --warn:#f59e0b; --err:#ef4444; --info:#38bdf8;
+
+      /* Градиенты и кнопки */
+      --g1:#22d3ee; --g2:#6366f1;  /* контраст с белым текстом AA */
+      --btn-text:#0b1220;
       --radius:14px;
-      --glass: rgba(255,255,255,.08);
-      --stroke: rgba(255,255,255,.18);
-      --text: #0f172a;
-      --muted:#64748b;
-      --ok:#10b981; --warn:#f59e0b; --err:#ef4444; --info:#3b82f6;
-      color-scheme: light dark;
-      font-synthesis-weight:none;
-    }
-    @media (prefers-color-scheme:dark){
-      :root{ --text:#e5e7eb; --muted:#94a3b8; }
+      --shadow: 0 10px 28px rgba(0,0,0,.35);
+
+      /* Фокусы (видимые) */
+      --ring:#38bdf8;
+      --ring-outer: #38bdf82a;     /* мягкая подсветка вокруг */
     }
     *{box-sizing:border-box}
     html,body{height:100%}
     body{
-      margin:0; font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Inter", sans-serif;
+      margin:0; padding:32px; display:grid; place-items:start center;
+      background: var(--bg);
       color:var(--text);
-      display:grid; place-items:start center; padding:32px;
-      background:#0b1220;
-      position:relative; overflow-x:hidden;
+      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+      -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
     }
-    /* Анимированный градиентный фон */
-    body::before, body::after{
+
+    /* Анимированный фон — с уважением prefers-reduced-motion */
+    .backdrop, .backdrop::after{
       content:""; position:fixed; inset:-20% -10% auto -10%; height:80%;
       background:
-        radial-gradient(60% 60% at 20% 20%, #4f46e5aa 0%, transparent 60%),
-        radial-gradient(50% 50% at 80% 30%, #06b6d4aa 0%, transparent 60%),
-        radial-gradient(40% 40% at 30% 80%, #22c55e88 0%, transparent 60%);
-      filter: blur(60px) saturate(120%);
-      animation: float 24s linear infinite alternate;
-      pointer-events:none; z-index:0; opacity:.6;
+        radial-gradient(60% 60% at 18% 22%, #4758ff33 0%, transparent 60%),
+        radial-gradient(48% 48% at 82% 28%, #00d3ff33 0%, transparent 62%),
+        radial-gradient(38% 38% at 28% 84%, #10b9812e 0%, transparent 65%);
+      filter: blur(70px) saturate(120%);
+      pointer-events:none; z-index:0; opacity:.7;
+      animation: backdropFloat 26s cubic-bezier(.2,.6,.1,1) infinite alternate;
     }
-    body::after{ inset:auto -10% -20% -10%; height:70%; transform:scaleX(-1); opacity:.55; }
-    @keyframes float { from{transform:translateY(-2%) rotate(0deg)} to{transform:translateY(2%) rotate(2deg)} }
+    .backdrop::after{ inset:auto -10% -22% -10%; height:72%; transform:scaleX(-1); opacity:.55; }
+    @keyframes backdropFloat { from{transform:translateY(-2%) rotate(0deg)} to{transform:translateY(2%) rotate(2deg)} }
+    @media (prefers-reduced-motion:reduce){ .backdrop, .backdrop::after{ animation:none } }
 
-    /* ---------- КОНТЕЙНЕР ---------- */
-    .wrap{
-      width:min(980px, 100%);
-      position:relative; z-index:1;
-    }
+    .wrap{ width:min(980px,100%); position:relative; z-index:1 }
     .card{
-      background:var(--glass); backdrop-filter:saturate(140%) blur(18px);
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02)) , var(--surface);
       border:1px solid var(--stroke);
       border-radius:var(--radius);
-      padding:22px;
-      box-shadow: 0 10px 30px rgb(0 0 0 / 25%), inset 0 1px 0 rgba(255,255,255,.05);
+      box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,.05);
+      padding:22px 22px 18px;
+      transition: transform .3s cubic-bezier(.2,.6,.1,1), box-shadow .3s;
     }
-    h1{margin:0 0 8px; font-size:28px; letter-spacing: .2px;}
+    .card:hover{ transform:translateY(-1px); box-shadow: 0 16px 36px rgba(0,0,0,.45) }
+
+    h1{margin:0 0 8px; font-size:28px; letter-spacing:.2px}
     .subtle{color:var(--muted); font-size:13px}
 
-    /* ---------- ФОРМА ---------- */
-    form{display:grid; gap:14px; grid-template-columns: 1fr 1fr; margin-top:16px}
+    /* ======= форма ======= */
+    form{display:grid; gap:14px; grid-template-columns:1fr 1fr; margin-top:16px}
     label{display:flex; flex-direction:column; gap:8px; font-weight:600; font-size:14px}
     input, select{
-      font:inherit; padding:12px 14px; border-radius:12px; border:1px solid var(--stroke);
-      background:rgba(255,255,255,.04); color:inherit; outline:none;
-      transition: box-shadow .25s, border-color .25s, transform .06s;
+      font:inherit; padding:12px 14px; border-radius:12px; outline:none;
+      border:1px solid var(--stroke);
+      background: #151e2b;        /* темнее для AA контраста */
+      color:var(--text);
+      transition: box-shadow .28s, border-color .28s, transform .06s;
     }
-    input:focus, select:focus{ border-color:#7dd3fc88; box-shadow:0 0 0 6px #0ea5e910 }
-    input:active{ transform:scale(.995) }
+    input::placeholder{color:#9db0c6}   /* заметный placeholder */
+    input:focus-visible, select:focus-visible{
+      border-color:var(--ring);
+      box-shadow: 0 0 0 2px var(--ring), 0 0 0 8px var(--ring-outer);
+    }
+    input:active{ transform:scale(.996) }
 
-    /* ---------- КНОПКИ ---------- */
-    .actions{grid-column: 1 / -1; display:flex; flex-wrap:wrap; gap:10px}
+    /* ======= кнопки ======= */
+    .actions{grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:10px}
     .btn{
       position:relative; border:none; padding:12px 16px; border-radius:12px; cursor:pointer;
-      color:#0b1220; background:#e2e8f0; font-weight:700; letter-spacing:.2px;
-      transition: transform .08s ease, filter .2s ease, box-shadow .2s ease;
-      box-shadow: 0 8px 16px rgba(0,0,0,.18);
-      overflow:hidden; user-select:none;
+      color:var(--btn-text); background:#e6eef7; font-weight:700; letter-spacing:.2px;
+      transition: transform .08s ease, filter .2s ease, box-shadow .25s ease;
+      box-shadow: 0 8px 16px rgba(0,0,0,.22);
+      user-select:none;
     }
-    .btn:hover{ filter:brightness(1.05) }
+    .btn:hover{ filter:brightness(1.06) }
     .btn:active{ transform: translateY(1px) scale(.995) }
+    .btn:focus-visible{ outline:2px solid var(--ring); outline-offset:2px }
     .btn.primary{
-      background:linear-gradient(135deg, #22d3ee, #818cf8);
-      color:white; box-shadow: 0 10px 20px rgba(99,102,241,.35);
+      background:linear-gradient(135deg, var(--g1), var(--g2));
+      color:white; text-shadow:0 1px 0 rgba(0,0,0,.35);
+      box-shadow: 0 12px 24px rgba(99,102,241,.32);
     }
-    .btn.ghost{ background:transparent; color:var(--text); border:1px solid var(--stroke) }
+    .btn.ghost{ background:#141c28; color:var(--text); border:1px solid var(--stroke) }
 
-    /* ripple */
-    .btn .ink{ position:absolute; border-radius:999px; transform:scale(0); opacity:.4; background:#fff;
-               animation:ripple .6s ease-out; pointer-events:none }
-    @keyframes ripple{ to{ transform:scale(16); opacity:0 } }
+    /* мягкий ripple — отключаем при reduced-motion */
+    .btn .ink{ position:absolute; border-radius:999px; transform:scale(0); opacity:.35; background:#fff;
+               animation:ripple .7s cubic-bezier(.2,.7,.1,1); pointer-events:none }
+    @keyframes ripple{ to{ transform:scale(18); opacity:0 } }
+    @media (prefers-reduced-motion:reduce){ .btn .ink{ display:none } }
 
-    /* ---------- РЕЗУЛЬТАТ ---------- */
+    /* ======= результат ======= */
     .result{ margin:14px 0 18px; }
     .pwd-row{ display:flex; gap:10px; align-items:center }
-    .pwd{ flex:1; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-          font-size:15px; padding:12px 14px; border-radius:12px; border:1px solid var(--stroke);
-          background:rgba(255,255,255,.06) }
-    .iconbtn{ min-width:44px; height:44px; border-radius:12px; border:1px solid var(--stroke);
-              background:rgba(255,255,255,.06); color:inherit; cursor:pointer }
-    .meta{ margin-top:6px; color:var(--muted); font-size:12px }
+    .pwd{
+      flex:1; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size:15px; padding:12px 14px; border-radius:12px;
+      border:1px solid var(--stroke); background:#121a25; color:var(--text);
+    }
+    .iconbtn{
+      min-width:44px; height:44px; border-radius:12px; border:1px solid var(--stroke);
+      background:#141c28; color:var(--text); cursor:pointer; transition: filter .2s, transform .08s;
+    }
+    .iconbtn:hover{ filter:brightness(1.07) }
+    .iconbtn:active{ transform:translateY(1px) }
+    .iconbtn:focus-visible{ outline:2px solid var(--ring); outline-offset:2px }
+    .meta{ margin-top:6px; color:var(--muted-weak); font-size:12px }
 
-    /* ---------- ТОСТЫ (flash) ---------- */
+    /* ======= тосты ======= */
     .toasts{ position:fixed; top:16px; right:16px; display:grid; gap:10px; z-index:10 }
-    .toast{ padding:10px 12px; border-radius:12px; border:1px solid var(--stroke); backdrop-filter: blur(12px);
-            animation: slidein .3s ease; box-shadow:0 10px 24px rgba(0,0,0,.25) }
-    .toast.success{ background:#10b98120; color:#16a34a }
-    .toast.error{ background:#ef444420; color:#ef4444 }
-    .toast.warning{ background:#f59e0b20; color:#d97706 }
-    .toast.info{ background:#3b82f620; color:#2563eb }
-    @keyframes slidein{ from{transform:translateY(-10px); opacity:0} to{transform:none; opacity:1} }
+    .toast{
+      padding:10px 12px; border-radius:12px; border:1px solid var(--stroke);
+      background:#101826; color:var(--text);
+      box-shadow:var(--shadow); backdrop-filter: blur(10px);
+      animation: slidein .35s cubic-bezier(.2,.7,.1,1);
+    }
+    .toast.success{ border-color:#0e5; box-shadow:0 10px 28px rgba(16,185,129,.25) }
+    .toast.error  { border-color:#f55; box-shadow:0 10px 28px rgba(239,68,68,.25) }
+    .toast.warning{ border-color:#fb0; box-shadow:0 10px 28px rgba(245,158,11,.25) }
+    .toast.info   { border-color:#4cf; box-shadow:0 10px 28px rgba(56,189,248,.25) }
+    @keyframes slidein{ from{transform:translateY(-8px); opacity:0} to{transform:none; opacity:1} }
+    @media (prefers-reduced-motion:reduce){ .toast{ animation:none } }
 
-    /* ---------- ТАБЛИЦА ---------- */
-    table{width:100%; border-collapse:separate; border-spacing:0 10px; margin-top:10px}
-    th{ text-align:left; font-size:12px; color:var(--muted); padding:0 10px }
-    td{ background:rgba(255,255,255,.05); border:1px solid var(--stroke); padding:10px 12px }
-    td:first-child{ border-radius:12px 0 0 12px }
-    td:last-child{ border-radius:0 12px 12px 0 }
-
-    .badge{ display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px;
-            font-size:12px; background:rgba(255,255,255,.06); border:1px solid var(--stroke) }
-
+    /* ======= таблица ======= */
     .hint{ color:var(--muted); font-size:12px; margin-top:6px }
-    .pill{ padding:.2rem .5rem; border-radius:999px; border:1px solid var(--stroke); background:rgba(255,255,255,.05) }
+    table{ width:100%; border-collapse:separate; border-spacing:0 10px; margin-top:10px }
+    th{ text-align:left; font-size:12px; color:#c5d0e0; padding:0 10px }
+    td{
+      background:#0f1724; border:1px solid var(--stroke); padding:10px 12px;
+      color:var(--text);
+    }
+    td:first-child{ border-radius:12px 0 0 12px }
+    td:last-child { border-radius:0 12px 12px 0 }
+    .badge{ display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px;
+            font-size:12px; background:#121a27; border:1px solid var(--stroke); color:#d9e3ef }
+
+    .pill{ padding:.2rem .5rem; border-radius:999px; border:1px solid var(--stroke); background:#121a27; color:#d9e3ef }
+
+    /* ======= доступность: фокус только для клавиатуры ======= */
+    :focus{ outline:none }
+    :focus-visible{ outline:2px solid var(--ring); outline-offset:2px }
+
   </style>
 </head>
 <body>
+  <div class="backdrop" aria-hidden="true"></div>
+
   <div class="wrap">
-    <div class="card">
+    <div class="card" role="region" aria-label="Генератор паролей">
       <h1>pwgen web</h1>
       <div class="subtle">Хранилище: <span class="pill">{{ vault_path }}</span></div>
 
-      <!-- тосты из flash -->
-      <div class="toasts" id="toasts">
+      <!-- тосты -->
+      <div class="toasts" id="toasts" role="status" aria-live="polite">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}
@@ -169,9 +210,9 @@ HTML_TEMPLATE = """<!doctype html>
       {% if password %}
         <div class="result">
           <div class="pwd-row">
-            <input id="pwd" class="pwd" type="password" value="{{ password }}" readonly spellcheck="false">
-            <button class="iconbtn" id="toggle" title="Показать/скрыть">👁</button>
-            <button class="iconbtn" id="copy"   title="Копировать">📋</button>
+            <input id="pwd" class="pwd" type="password" value="{{ password }}" readonly spellcheck="false" aria-label="Сгенерированный пароль">
+            <button class="iconbtn" id="toggle" title="Показать/скрыть пароль" aria-label="Показать или скрыть пароль">👁</button>
+            <button class="iconbtn" id="copy"   title="Копировать пароль" aria-label="Копировать пароль">📋</button>
           </div>
           <div class="meta">Версия алгоритма: <b>{{ version }}</b>, использован <code>c={{ used_c }}</code></div>
         </div>
@@ -185,17 +226,17 @@ HTML_TEMPLATE = """<!doctype html>
 
         <label>
           Сайт / домен
-          <input type="text" name="site" value="{{ site }}" placeholder="example.com">
+          <input type="text" name="site" value="{{ site }}" placeholder="example.com" inputmode="url" autocomplete="url">
         </label>
 
         <label>
           Логин
-          <input type="text" name="login" value="{{ login }}" placeholder="you@mail.com">
+          <input type="text" name="login" value="{{ login }}" placeholder="you@mail.com" autocomplete="username">
         </label>
 
         <label>
           Профиль (для создания записи)
-          <select name="profile">
+          <select name="profile" aria-label="Профиль">
             {% for p in profiles %}
               <option value="{{ p }}" {% if profile==p %}selected{% endif %}>{{ p }}</option>
             {% endfor %}
@@ -219,7 +260,7 @@ HTML_TEMPLATE = """<!doctype html>
 
       {% if entries %}
         <div class="hint">Сайты в хранилище</div>
-        <table>
+        <table role="table" aria-label="Сайты в хранилище">
           <thead>
             <tr>
               <th>Сайт</th><th>Логин</th><th>Длина</th><th>Классы</th><th>c</th><th>Версия</th>
@@ -243,58 +284,42 @@ HTML_TEMPLATE = """<!doctype html>
   </div>
 
   <script>
-    // Кнопки: ripple-эффект
+    // Ripple (мягкий)
     for (const b of document.querySelectorAll('.btn')) {
       b.addEventListener('click', e => {
+        if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
         const r = document.createElement('span');
         r.className = 'ink';
         const rect = b.getBoundingClientRect();
         const x = e.clientX - rect.left, y = e.clientY - rect.top;
         r.style.left = (x-10)+'px'; r.style.top = (y-10)+'px';
         r.style.width = r.style.height = Math.max(rect.width, rect.height)+'px';
-        b.appendChild(r); setTimeout(()=>r.remove(), 600);
+        b.appendChild(r); setTimeout(()=>r.remove(), 700);
       }, {passive:true});
     }
 
-    // Тосты: авто-схлопывание
+    // Тосты: авто-закрытие
     const toasts = document.getElementById('toasts');
     if (toasts) {
       for (const t of [...toasts.children]) {
-        setTimeout(()=>{ t.style.transition='opacity .4s, transform .4s';
+        setTimeout(()=>{ t.style.transition='opacity .45s, transform .45s';
                          t.style.opacity='0'; t.style.transform='translateY(-6px)';
-                         setTimeout(()=>t.remove(), 420); }, 4200);
+                         setTimeout(()=>t.remove(), 460); }, 4400);
       }
     }
 
-    // Пароль: показать/скрыть и копировать
+    // Показать/скрыть и копировать
     const pwd = document.getElementById('pwd');
     const toggle = document.getElementById('toggle');
     const copy = document.getElementById('copy');
-    if (pwd && toggle) toggle.onclick = () => { pwd.type = (pwd.type==='password'?'text':'password'); };
+    if (pwd && toggle) toggle.onclick = () => { pwd.type = (pwd.type==='password'?'text':'password'); toggle.blur(); };
     if (pwd && copy) copy.onclick = async () => {
       pwd.select(); try { await navigator.clipboard.writeText(pwd.value); pulse(copy, '✔'); } catch(e){ pulse(copy,'⚠'); }
     };
     function pulse(btn, glyph){
       const old = btn.textContent; btn.textContent = glyph;
-      btn.style.boxShadow='0 0 0 6px #10b98133'; setTimeout(()=>{ btn.style.boxShadow=''; btn.textContent=old; }, 900);
-    }
-
-    // Искры при наличии пароля
-    if (pwd) sparkles(pwd.closest('.result'));
-    function sparkles(host){
-      const N=20; for(let i=0;i<N;i++){
-        const s=document.createElement('span'); s.style.position='absolute';
-        s.style.width=s.style.height=(6+Math.random()*6)+'px';
-        s.style.background=['#22d3ee','#60a5fa','#34d399','#f472b6'][i%4];
-        s.style.borderRadius='99px'; s.style.filter='blur(.2px)';
-        const b=host.getBoundingClientRect();
-        s.style.left=(b.width/2-8)+'px'; s.style.top='-10px';
-        s.style.transform=`translate(${(Math.random()*2-1)*220}px, ${40+Math.random()*60}px)`;
-        s.style.opacity='0'; s.style.transition='transform .9s cubic-bezier(.2,.7,.1,1), opacity .9s';
-        host.style.position='relative'; host.appendChild(s);
-        requestAnimationFrame(()=>{ s.style.opacity='.95'; s.style.transform=`translate(${(Math.random()*2-1)*220}px, ${120+Math.random()*80}px)`; });
-        setTimeout(()=>s.remove(), 1000);
-      }
+      btn.style.boxShadow='0 0 0 8px var(--ring-outer), 0 0 0 2px var(--ring)';
+      setTimeout(()=>{ btn.style.boxShadow=''; btn.textContent=old; }, 900);
     }
   </script>
 </body>
