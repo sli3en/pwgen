@@ -1,17 +1,30 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import json
 import os
 from pathlib import Path
 
-from flask import Flask, flash, render_template_string, request
+from flask import (
+    Flask, flash, render_template_string, request,
+    session, redirect, url_for
+)
 
-import pwgen
+import pwgen  # ваш локальный модуль
 
+# -------------------- Конфигурация --------------------
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.environ.get("PWGEN_WEB_SECRET", os.urandom(16).hex())
+app.config["SECRET_KEY"] = os.environ.get("PWGEN_WEB_SECRET", os.urandom(32).hex())
 
+# Хранилище (персистентный путь на Railway: /data/pwgen_vault.json)
 VAULT_PATH = Path(os.environ.get("PWGEN_VAULT_PATH", pwgen.DEFAULT_VAULT)).expanduser()
 
+# Необязательный PIN для входа в UI (задайте PWGEN_WEB_PIN в переменных окружения)
+UI_PIN = os.environ.get("PWGEN_WEB_PIN", "").strip() or None
+
+
+# -------------------- HTML --------------------
 
 HTML_TEMPLATE = """<!doctype html>
 <html lang="ru">
@@ -20,12 +33,12 @@ HTML_TEMPLATE = """<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>pwgen web</title>
   <style>
-    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    :root { color-scheme: light dark; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     body { margin: 0 auto; padding: 1.5rem; max-width: 720px; }
-    h1 { margin-bottom: 1rem; }
+    h1 { margin-bottom: 0.5rem; }
     form { display: grid; gap: 1rem; margin-bottom: 1.5rem; }
     label { display: flex; flex-direction: column; gap: 0.35rem; font-weight: 600; }
-    input, button, select { font: inherit; padding: 0.5rem; border-radius: 0.5rem; border: 1px solid #9994; }
+    input, button, select { font: inherit; padding: 0.6rem 0.7rem; border-radius: 0.5rem; border: 1px solid #9994; }
     button { cursor: pointer; border: 1px solid #6666; background: #eee8; }
     .buttons { display: flex; gap: 0.75rem; flex-wrap: wrap; }
     .flash { margin: 0 0 1rem; padding: 0; list-style: none; }
@@ -51,7 +64,7 @@ HTML_TEMPLATE = """<!doctype html>
     {% if messages %}
       <ul class="flash">
       {% for category, message in messages %}
-        <li class="{{ category }}">{{ message }}</li>
+        <li class="{{ category }}">{{ message|safe }}</li>
       {% endfor %}
       </ul>
     {% endif %}
@@ -86,6 +99,7 @@ HTML_TEMPLATE = """<!doctype html>
     <div class="buttons">
       <button type="submit" name="action" value="generate">Сгенерировать</button>
       <button type="submit" name="action" value="list">Обновить список</button>
+      <button type="submit" name="action" value="init_vault">Создать вольт (если отсутствует)</button>
     </div>
   </form>
 
@@ -121,7 +135,10 @@ HTML_TEMPLATE = """<!doctype html>
 """
 
 
+# -------------------- Вспомогательные функции --------------------
+
 def load_vault(master: str) -> dict:
+    """Расшифровать и вернуть плейнтекст вольта."""
     blob = pwgen.vault_load(str(VAULT_PATH))
     plaintext = pwgen.vault_decrypt(blob, master)
     return json.loads(plaintext.decode("utf-8"))
@@ -141,6 +158,48 @@ def format_entries(raw_sites: dict) -> list:
     return entries
 
 
+def create_vault(master: str) -> None:
+    """Создать новый пустой вольт по VAULT_PATH с капсулой."""
+    capsule = pwgen.make_capsule("")
+    pt = pwgen.make_empty_plaintext(pwgen.b64e(capsule))
+    blob = pwgen.vault_encrypt(
+        json.dumps(pt, ensure_ascii=False).encode("utf-8"),
+        master, pwgen.DEFAULT_KDF_T, pwgen.DEFAULT_KDF_M, pwgen.DEFAULT_KDF_P
+    )
+    VAULT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    pwgen.vault_save(str(VAULT_PATH), blob)
+
+
+# -------------------- PIN-гарда (опционально) --------------------
+
+@app.before_request
+def _require_pin():
+    if not UI_PIN:
+        return
+    if request.endpoint in {"login", "static"}:
+        return
+    if session.get("ok"):
+        return
+    return redirect(url_for("login"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        if request.form.get("pin") == UI_PIN:
+            session["ok"] = True
+            return redirect(url_for("index"))
+        flash("Неверный PIN", "error")
+    return render_template_string("""
+    <form method="post" style="max-width:320px;margin:48px auto;font:16px system-ui">
+      <h3>Вход</h3>
+      <label>PIN <input name="pin" type="password" autofocus></label>
+      <button>Войти</button>
+    </form>""")
+
+
+# -------------------- Основной обработчик --------------------
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     password = None
@@ -158,12 +217,27 @@ def index():
         if not master:
             flash("Введите мастер-пароль.", "error")
         else:
+            # Ветка явного создания вольта из UI
+            if action == "init_vault":
+                if VAULT_PATH.exists():
+                    flash(f"Вольт уже существует: <code>{VAULT_PATH}</code>", "info")
+                else:
+                    try:
+                        create_vault(master)
+                        flash(f"Вольт создан: <code>{VAULT_PATH}</code>", "success")
+                    except Exception as exc:
+                        flash(f"Не удалось создать вольт: {exc}", "error")
+
+            # Пробуем загрузить вольт (после возможного создания)
             try:
                 data = load_vault(master)
+            except FileNotFoundError:
+                flash(f"Вольт не найден: <code>{VAULT_PATH}</code>. Нажмите «Создать вольт (если отсутствует)».", "error")
+                data = {"sites": {}}
             except Exception as exc:
                 flash(f"Не удалось расшифровать {VAULT_PATH}: {exc}", "error")
+                data = {"sites": {}}
             else:
-                entries = format_entries(data["sites"])
                 if action == "generate":
                     if not site_field or not login_field:
                         flash("Укажите сайт и логин.", "error")
@@ -213,8 +287,10 @@ def index():
                                         )
                                     flash("Пароль сгенерирован.", "success")
                                     site_field = site_id
-                else:
+                elif action == "list":
                     flash("Список записей обновлён.", "info")
+
+            entries = format_entries(data.get("sites", {}))
 
     context = {
         "password": password,
@@ -224,10 +300,12 @@ def index():
         "site": site_field,
         "login": login_field,
         "length_override": length_field,
-        "vault_path": VAULT_PATH,
+        "vault_path": str(VAULT_PATH),
     }
     return render_template_string(HTML_TEMPLATE, **context)
 
+
+# -------------------- Запуск --------------------
 
 if __name__ == "__main__":
     host = os.environ.get("PWGEN_WEB_HOST", "0.0.0.0")
