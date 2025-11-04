@@ -12,19 +12,16 @@ from flask import (
 
 import pwgen  # ваш локальный модуль
 
-# -------------------- Конфигурация --------------------
-
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("PWGEN_WEB_SECRET", os.urandom(32).hex())
 
-# Хранилище (персистентный путь на Railway: /data/pwgen_vault.json)
+# Персистентный путь на Railway задавайте переменной окружения:
+# PWGEN_VAULT_PATH=/data/pwgen_vault.json  (при примонтированном volume /data)
 VAULT_PATH = Path(os.environ.get("PWGEN_VAULT_PATH", pwgen.DEFAULT_VAULT)).expanduser()
 
-# Необязательный PIN для входа в UI (задайте PWGEN_WEB_PIN в переменных окружения)
+# Необязательный PIN для входа (PWGEN_WEB_PIN=123456)
 UI_PIN = os.environ.get("PWGEN_WEB_PIN", "").strip() or None
 
-
-# -------------------- HTML --------------------
 
 HTML_TEMPLATE = """<!doctype html>
 <html lang="ru">
@@ -34,13 +31,15 @@ HTML_TEMPLATE = """<!doctype html>
   <title>pwgen web</title>
   <style>
     :root { color-scheme: light dark; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-    body { margin: 0 auto; padding: 1.5rem; max-width: 720px; }
+    body { margin: 0 auto; padding: 1.5rem; max-width: 820px; }
     h1 { margin-bottom: 0.5rem; }
-    form { display: grid; gap: 1rem; margin-bottom: 1.5rem; }
-    label { display: flex; flex-direction: column; gap: 0.35rem; font-weight: 600; }
+    form { display: grid; gap: 1rem; margin-bottom: 1.5rem; grid-template-columns: 1fr 1fr; }
+    form > label { display: flex; flex-direction: column; gap: 0.35rem; font-weight: 600; grid-column: span 2; }
     input, button, select { font: inherit; padding: 0.6rem 0.7rem; border-radius: 0.5rem; border: 1px solid #9994; }
+    .row { display: contents; }
+    .row > label { grid-column: span 1; }
     button { cursor: pointer; border: 1px solid #6666; background: #eee8; }
-    .buttons { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    .buttons { display: flex; gap: 0.6rem; flex-wrap: wrap; grid-column: span 2; }
     .flash { margin: 0 0 1rem; padding: 0; list-style: none; }
     .flash li { padding: 0.6rem 0.8rem; border-radius: 0.5rem; margin-bottom: 0.6rem; }
     .flash li.error { background: #ffdddd; color: #700; }
@@ -48,17 +47,18 @@ HTML_TEMPLATE = """<!doctype html>
     .flash li.warning { background: #fff4d6; color: #754; }
     .flash li.info { background: #dde9ff; color: #134; }
     .result { padding: 1rem; border: 1px solid #9994; border-radius: 0.75rem; margin-bottom: 1.5rem; }
-    .result input { width: 100%; font-family: 'Fira Code', Consolas, monospace; font-size: 1.1rem; }
+    .result input { width: 100%; font-family: 'Fira Code', Consolas, monospace; font-size: 1.05rem; }
     table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.95rem; }
     th, td { border: 1px solid #9994; padding: 0.4rem 0.5rem; text-align: left; }
     th { font-weight: 600; }
     caption { text-align: left; font-weight: 600; margin-bottom: 0.5rem; }
     small { color: #666; }
+    code { background:#0001; padding:0 .25rem; border-radius:.25rem; }
   </style>
 </head>
 <body>
   <h1>pwgen web</h1>
-  <p><small>Хранилище: {{ vault_path }}</small></p>
+  <p><small>Хранилище: <code>{{ vault_path }}</code></small></p>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -84,20 +84,38 @@ HTML_TEMPLATE = """<!doctype html>
       Мастер-пароль
       <input type="password" name="master" placeholder="Введите мастер-пароль" required autocomplete="current-password">
     </label>
-    <label>
-      Сайт / домен
-      <input type="text" name="site" value="{{ site }}" placeholder="example.com">
-    </label>
-    <label>
-      Логин
-      <input type="text" name="login" value="{{ login }}" placeholder="you@mail.com">
-    </label>
-    <label>
-      Переопределить длину (опционально)
-      <input type="number" min="4" max="128" name="length" value="{{ length_override }}">
-    </label>
+
+    <div class="row">
+      <label>
+        Сайт / домен
+        <input type="text" name="site" value="{{ site }}" placeholder="example.com">
+      </label>
+      <label>
+        Логин
+        <input type="text" name="login" value="{{ login }}" placeholder="you@mail.com">
+      </label>
+    </div>
+
+    <div class="row">
+      <label>
+        Профиль (для создания записи)
+        <select name="profile">
+          {% for p in profiles %}
+            <option value="{{ p }}" {% if profile==p %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Переопределить длину при генерации (опц.)
+        <input type="number" min="4" max="128" name="length" value="{{ length_override }}">
+      </label>
+    </div>
+
     <div class="buttons">
       <button type="submit" name="action" value="generate">Сгенерировать</button>
+      <button type="submit" name="action" value="add_entry">Создать запись (по профилю)</button>
+      <button type="submit" name="action" value="rotate_c">Ротация c+1</button>
+      <button type="submit" name="action" value="rotate_rseed">Новый rseed</button>
       <button type="submit" name="action" value="list">Обновить список</button>
       <button type="submit" name="action" value="init_vault">Создать вольт (если отсутствует)</button>
     </div>
@@ -134,15 +152,24 @@ HTML_TEMPLATE = """<!doctype html>
 </html>
 """
 
-
-# -------------------- Вспомогательные функции --------------------
+# ---------- утилиты ----------
 
 def load_vault(master: str) -> dict:
-    """Расшифровать и вернуть плейнтекст вольта."""
     blob = pwgen.vault_load(str(VAULT_PATH))
     plaintext = pwgen.vault_decrypt(blob, master)
     return json.loads(plaintext.decode("utf-8"))
 
+def save_vault(master: str, data: dict) -> None:
+    """Сохранить плейнтекст, сохранив текущие параметры KDF из blob (или дефолты)."""
+    try:
+        blob = pwgen.vault_load(str(VAULT_PATH))
+        t = int(blob["kdf"]["t"]); m = int(blob["kdf"]["m"]); p = int(blob["kdf"]["p"])
+    except Exception:
+        t = pwgen.DEFAULT_KDF_T; m = pwgen.DEFAULT_KDF_M; p = pwgen.DEFAULT_KDF_P
+    data["updated"] = pwgen.now_iso()
+    enc = pwgen.vault_encrypt(json.dumps(data, ensure_ascii=False).encode("utf-8"),
+                              master, t, m, p)
+    pwgen.vault_save(str(VAULT_PATH), enc)
 
 def format_entries(raw_sites: dict) -> list:
     entries = []
@@ -157,20 +184,15 @@ def format_entries(raw_sites: dict) -> list:
     entries.sort(key=lambda x: (x["site_id"], x["login"]))
     return entries
 
-
 def create_vault(master: str) -> None:
-    """Создать новый пустой вольт по VAULT_PATH с капсулой."""
     capsule = pwgen.make_capsule("")
     pt = pwgen.make_empty_plaintext(pwgen.b64e(capsule))
-    blob = pwgen.vault_encrypt(
-        json.dumps(pt, ensure_ascii=False).encode("utf-8"),
-        master, pwgen.DEFAULT_KDF_T, pwgen.DEFAULT_KDF_M, pwgen.DEFAULT_KDF_P
-    )
+    enc = pwgen.vault_encrypt(json.dumps(pt, ensure_ascii=False).encode("utf-8"),
+                              master, pwgen.DEFAULT_KDF_T, pwgen.DEFAULT_KDF_M, pwgen.DEFAULT_KDF_P)
     VAULT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    pwgen.vault_save(str(VAULT_PATH), blob)
+    pwgen.vault_save(str(VAULT_PATH), enc)
 
-
-# -------------------- PIN-гарда (опционально) --------------------
+# ---------- PIN-guard (опц.) ----------
 
 @app.before_request
 def _require_pin():
@@ -181,7 +203,6 @@ def _require_pin():
     if session.get("ok"):
         return
     return redirect(url_for("login"))
-
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -197,8 +218,7 @@ def login():
       <button>Войти</button>
     </form>""")
 
-
-# -------------------- Основной обработчик --------------------
+# ---------- основной обработчик ----------
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -210,6 +230,7 @@ def index():
     site_field = request.form.get("site", "")
     login_field = request.form.get("login", "")
     length_field = request.form.get("length", "")
+    profile_field = request.form.get("profile", "ultra")
     action = request.form.get("action", "generate")
 
     if request.method == "POST":
@@ -217,7 +238,7 @@ def index():
         if not master:
             flash("Введите мастер-пароль.", "error")
         else:
-            # Ветка явного создания вольта из UI
+            # создание вольта из UI
             if action == "init_vault":
                 if VAULT_PATH.exists():
                     flash(f"Вольт уже существует: <code>{VAULT_PATH}</code>", "info")
@@ -228,7 +249,7 @@ def index():
                     except Exception as exc:
                         flash(f"Не удалось создать вольт: {exc}", "error")
 
-            # Пробуем загрузить вольт (после возможного создания)
+            # пробуем загрузить вольт
             try:
                 data = load_vault(master)
             except FileNotFoundError:
@@ -238,8 +259,81 @@ def index():
                 flash(f"Не удалось расшифровать {VAULT_PATH}: {exc}", "error")
                 data = {"sites": {}}
             else:
+                site_ok = bool(site_field.strip())
+                login_ok = bool(login_field.strip())
+
+                # --- создать запись ---
+                if action == "add_entry":
+                    if not (site_ok and login_ok):
+                        flash("Укажите сайт и логин для создания записи.", "error")
+                    else:
+                        site_id = pwgen.normalize_site_id(site_field)
+                        key = f"{site_id}|{login_field.strip()}"
+                        if key in data["sites"]:
+                            flash("Такая запись уже существует.", "info")
+                        else:
+                            if profile_field not in pwgen.PROFILES:
+                                flash("Неизвестный профиль.", "error")
+                            else:
+                                entry = {
+                                    "site_id": site_id,
+                                    "login": login_field.strip(),
+                                    "v": pwgen.ALGO_VERSION,
+                                    "c": 0,
+                                    "rseed": os.urandom(16).hex(),
+                                    "policy": pwgen.PROFILES[profile_field],
+                                    "created": pwgen.now_iso(),
+                                    "notes": ""
+                                }
+                                data["sites"][key] = entry
+                                try:
+                                    save_vault(master, data)
+                                    flash(f"Запись создана: <code>{site_id}</code> | <code>{login_field.strip()}</code> с профилем <b>{profile_field}</b>.", "success")
+                                except Exception as exc:
+                                    flash(f"Не удалось сохранить вольт: {exc}", "error")
+
+                # --- ротация c+1 ---
+                if action == "rotate_c":
+                    if not (site_ok and login_ok):
+                        flash("Укажите сайт и логин для ротации c.", "error")
+                    else:
+                        site_id = pwgen.normalize_site_id(site_field)
+                        key = f"{site_id}|{login_field.strip()}"
+                        entry = data["sites"].get(key)
+                        if not entry:
+                            flash("Такой пары сайт/логин нет в хранилище.", "error")
+                        else:
+                            entry["c"] = int(entry.get("c", 0)) + 1
+                            entry["v"] = pwgen.ALGO_VERSION
+                            try:
+                                save_vault(master, data)
+                                flash(f"Ротация выполнена: новый c={entry['c']}.", "success")
+                            except Exception as exc:
+                                flash(f"Не удалось сохранить вольт: {exc}", "error")
+
+                # --- новый rseed ---
+                if action == "rotate_rseed":
+                    if not (site_ok and login_ok):
+                        flash("Укажите сайт и логин для генерации нового rseed.", "error")
+                    else:
+                        site_id = pwgen.normalize_site_id(site_field)
+                        key = f"{site_id}|{login_field.strip()}"
+                        entry = data["sites"].get(key)
+                        if not entry:
+                            flash("Такой пары сайт/логин нет в хранилище.", "error")
+                        else:
+                            entry["rseed"] = os.urandom(16).hex()
+                            entry["c"] = 0
+                            entry["v"] = pwgen.ALGO_VERSION
+                            try:
+                                save_vault(master, data)
+                                flash("Сгенерирован новый rseed и сброшен c=0.", "success")
+                            except Exception as exc:
+                                flash(f"Не удалось сохранить вольт: {exc}", "error")
+
+                # --- генерация пароля ---
                 if action == "generate":
-                    if not site_field or not login_field:
+                    if not (site_ok and login_ok):
                         flash("Укажите сайт и логин.", "error")
                     else:
                         site_id = pwgen.normalize_site_id(site_field)
@@ -267,13 +361,8 @@ def index():
                                 version = entry.get("v", pwgen.ALGO_VERSION)
                                 try:
                                     password, used_c = pwgen.gen_password_with_retries(
-                                        master,
-                                        capsule,
-                                        site_id,
-                                        login_field.strip(),
-                                        policy,
-                                        version,
-                                        int(entry.get("c", 0)),
+                                        master, capsule, site_id, login_field.strip(),
+                                        policy, version, int(entry.get("c", 0)),
                                         bytes.fromhex(entry["rseed"]),
                                     )
                                 except ValueError as exc:
@@ -287,7 +376,8 @@ def index():
                                         )
                                     flash("Пароль сгенерирован.", "success")
                                     site_field = site_id
-                elif action == "list":
+
+                if action == "list":
                     flash("Список записей обновлён.", "info")
 
             entries = format_entries(data.get("sites", {}))
@@ -301,11 +391,10 @@ def index():
         "login": login_field,
         "length_override": length_field,
         "vault_path": str(VAULT_PATH),
+        "profiles": list(pwgen.PROFILES.keys()),
+        "profile": profile_field,
     }
     return render_template_string(HTML_TEMPLATE, **context)
-
-
-# -------------------- Запуск --------------------
 
 if __name__ == "__main__":
     host = os.environ.get("PWGEN_WEB_HOST", "0.0.0.0")
