@@ -30,124 +30,273 @@ HTML_TEMPLATE = """<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>pwgen web</title>
   <style>
-    :root { color-scheme: light dark; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-    body { margin: 0 auto; padding: 1.5rem; max-width: 820px; }
-    h1 { margin-bottom: 0.5rem; }
-    form { display: grid; gap: 1rem; margin-bottom: 1.5rem; grid-template-columns: 1fr 1fr; }
-    form > label { display: flex; flex-direction: column; gap: 0.35rem; font-weight: 600; grid-column: span 2; }
-    input, button, select { font: inherit; padding: 0.6rem 0.7rem; border-radius: 0.5rem; border: 1px solid #9994; }
-    .row { display: contents; }
-    .row > label { grid-column: span 1; }
-    button { cursor: pointer; border: 1px solid #6666; background: #eee8; }
-    .buttons { display: flex; gap: 0.6rem; flex-wrap: wrap; grid-column: span 2; }
-    .flash { margin: 0 0 1rem; padding: 0; list-style: none; }
-    .flash li { padding: 0.6rem 0.8rem; border-radius: 0.5rem; margin-bottom: 0.6rem; }
-    .flash li.error { background: #ffdddd; color: #700; }
-    .flash li.success { background: #ddffdd; color: #074; }
-    .flash li.warning { background: #fff4d6; color: #754; }
-    .flash li.info { background: #dde9ff; color: #134; }
-    .result { padding: 1rem; border: 1px solid #9994; border-radius: 0.75rem; margin-bottom: 1.5rem; }
-    .result input { width: 100%; font-family: 'Fira Code', Consolas, monospace; font-size: 1.05rem; }
-    table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.95rem; }
-    th, td { border: 1px solid #9994; padding: 0.4rem 0.5rem; text-align: left; }
-    th { font-weight: 600; }
-    caption { text-align: left; font-weight: 600; margin-bottom: 0.5rem; }
-    small { color: #666; }
-    code { background:#0001; padding:0 .25rem; border-radius:.25rem; }
+    /* ---------- БАЗА / ТЕМЫ ---------- */
+    :root{
+      --radius:14px;
+      --glass: rgba(255,255,255,.08);
+      --stroke: rgba(255,255,255,.18);
+      --text: #0f172a;
+      --muted:#64748b;
+      --ok:#10b981; --warn:#f59e0b; --err:#ef4444; --info:#3b82f6;
+      color-scheme: light dark;
+      font-synthesis-weight:none;
+    }
+    @media (prefers-color-scheme:dark){
+      :root{ --text:#e5e7eb; --muted:#94a3b8; }
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Inter", sans-serif;
+      color:var(--text);
+      display:grid; place-items:start center; padding:32px;
+      background:#0b1220;
+      position:relative; overflow-x:hidden;
+    }
+    /* Анимированный градиентный фон */
+    body::before, body::after{
+      content:""; position:fixed; inset:-20% -10% auto -10%; height:80%;
+      background:
+        radial-gradient(60% 60% at 20% 20%, #4f46e5aa 0%, transparent 60%),
+        radial-gradient(50% 50% at 80% 30%, #06b6d4aa 0%, transparent 60%),
+        radial-gradient(40% 40% at 30% 80%, #22c55e88 0%, transparent 60%);
+      filter: blur(60px) saturate(120%);
+      animation: float 24s linear infinite alternate;
+      pointer-events:none; z-index:0; opacity:.6;
+    }
+    body::after{ inset:auto -10% -20% -10%; height:70%; transform:scaleX(-1); opacity:.55; }
+    @keyframes float { from{transform:translateY(-2%) rotate(0deg)} to{transform:translateY(2%) rotate(2deg)} }
+
+    /* ---------- КОНТЕЙНЕР ---------- */
+    .wrap{
+      width:min(980px, 100%);
+      position:relative; z-index:1;
+    }
+    .card{
+      background:var(--glass); backdrop-filter:saturate(140%) blur(18px);
+      border:1px solid var(--stroke);
+      border-radius:var(--radius);
+      padding:22px;
+      box-shadow: 0 10px 30px rgb(0 0 0 / 25%), inset 0 1px 0 rgba(255,255,255,.05);
+    }
+    h1{margin:0 0 8px; font-size:28px; letter-spacing: .2px;}
+    .subtle{color:var(--muted); font-size:13px}
+
+    /* ---------- ФОРМА ---------- */
+    form{display:grid; gap:14px; grid-template-columns: 1fr 1fr; margin-top:16px}
+    label{display:flex; flex-direction:column; gap:8px; font-weight:600; font-size:14px}
+    input, select{
+      font:inherit; padding:12px 14px; border-radius:12px; border:1px solid var(--stroke);
+      background:rgba(255,255,255,.04); color:inherit; outline:none;
+      transition: box-shadow .25s, border-color .25s, transform .06s;
+    }
+    input:focus, select:focus{ border-color:#7dd3fc88; box-shadow:0 0 0 6px #0ea5e910 }
+    input:active{ transform:scale(.995) }
+
+    /* ---------- КНОПКИ ---------- */
+    .actions{grid-column: 1 / -1; display:flex; flex-wrap:wrap; gap:10px}
+    .btn{
+      position:relative; border:none; padding:12px 16px; border-radius:12px; cursor:pointer;
+      color:#0b1220; background:#e2e8f0; font-weight:700; letter-spacing:.2px;
+      transition: transform .08s ease, filter .2s ease, box-shadow .2s ease;
+      box-shadow: 0 8px 16px rgba(0,0,0,.18);
+      overflow:hidden; user-select:none;
+    }
+    .btn:hover{ filter:brightness(1.05) }
+    .btn:active{ transform: translateY(1px) scale(.995) }
+    .btn.primary{
+      background:linear-gradient(135deg, #22d3ee, #818cf8);
+      color:white; box-shadow: 0 10px 20px rgba(99,102,241,.35);
+    }
+    .btn.ghost{ background:transparent; color:var(--text); border:1px solid var(--stroke) }
+
+    /* ripple */
+    .btn .ink{ position:absolute; border-radius:999px; transform:scale(0); opacity:.4; background:#fff;
+               animation:ripple .6s ease-out; pointer-events:none }
+    @keyframes ripple{ to{ transform:scale(16); opacity:0 } }
+
+    /* ---------- РЕЗУЛЬТАТ ---------- */
+    .result{ margin:14px 0 18px; }
+    .pwd-row{ display:flex; gap:10px; align-items:center }
+    .pwd{ flex:1; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+          font-size:15px; padding:12px 14px; border-radius:12px; border:1px solid var(--stroke);
+          background:rgba(255,255,255,.06) }
+    .iconbtn{ min-width:44px; height:44px; border-radius:12px; border:1px solid var(--stroke);
+              background:rgba(255,255,255,.06); color:inherit; cursor:pointer }
+    .meta{ margin-top:6px; color:var(--muted); font-size:12px }
+
+    /* ---------- ТОСТЫ (flash) ---------- */
+    .toasts{ position:fixed; top:16px; right:16px; display:grid; gap:10px; z-index:10 }
+    .toast{ padding:10px 12px; border-radius:12px; border:1px solid var(--stroke); backdrop-filter: blur(12px);
+            animation: slidein .3s ease; box-shadow:0 10px 24px rgba(0,0,0,.25) }
+    .toast.success{ background:#10b98120; color:#16a34a }
+    .toast.error{ background:#ef444420; color:#ef4444 }
+    .toast.warning{ background:#f59e0b20; color:#d97706 }
+    .toast.info{ background:#3b82f620; color:#2563eb }
+    @keyframes slidein{ from{transform:translateY(-10px); opacity:0} to{transform:none; opacity:1} }
+
+    /* ---------- ТАБЛИЦА ---------- */
+    table{width:100%; border-collapse:separate; border-spacing:0 10px; margin-top:10px}
+    th{ text-align:left; font-size:12px; color:var(--muted); padding:0 10px }
+    td{ background:rgba(255,255,255,.05); border:1px solid var(--stroke); padding:10px 12px }
+    td:first-child{ border-radius:12px 0 0 12px }
+    td:last-child{ border-radius:0 12px 12px 0 }
+
+    .badge{ display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px;
+            font-size:12px; background:rgba(255,255,255,.06); border:1px solid var(--stroke) }
+
+    .hint{ color:var(--muted); font-size:12px; margin-top:6px }
+    .pill{ padding:.2rem .5rem; border-radius:999px; border:1px solid var(--stroke); background:rgba(255,255,255,.05) }
   </style>
 </head>
 <body>
-  <h1>pwgen web</h1>
-  <p><small>Хранилище: <code>{{ vault_path }}</code></small></p>
+  <div class="wrap">
+    <div class="card">
+      <h1>pwgen web</h1>
+      <div class="subtle">Хранилище: <span class="pill">{{ vault_path }}</span></div>
 
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      <ul class="flash">
-      {% for category, message in messages %}
-        <li class="{{ category }}">{{ message|safe }}</li>
-      {% endfor %}
-      </ul>
-    {% endif %}
-  {% endwith %}
+      <!-- тосты из flash -->
+      <div class="toasts" id="toasts">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="toast {{ category }}">{{ message|safe }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+      </div>
 
-  {% if password %}
-    <div class="result">
-      <label>Сгенерированный пароль
-        <input type="text" value="{{ password }}" readonly onclick="this.select();" spellcheck="false">
-      </label>
-      <small>Версия алгоритма: {{ version }}, использован c={{ used_c }}</small>
-    </div>
-  {% endif %}
+      {% if password %}
+        <div class="result">
+          <div class="pwd-row">
+            <input id="pwd" class="pwd" type="password" value="{{ password }}" readonly spellcheck="false">
+            <button class="iconbtn" id="toggle" title="Показать/скрыть">👁</button>
+            <button class="iconbtn" id="copy"   title="Копировать">📋</button>
+          </div>
+          <div class="meta">Версия алгоритма: <b>{{ version }}</b>, использован <code>c={{ used_c }}</code></div>
+        </div>
+      {% endif %}
 
-  <form method="post" autocomplete="off">
-    <label>
-      Мастер-пароль
-      <input type="password" name="master" placeholder="Введите мастер-пароль" required autocomplete="current-password">
-    </label>
+      <form method="post" autocomplete="off">
+        <label style="grid-column:1/-1">
+          Мастер-пароль
+          <input type="password" name="master" placeholder="Введите мастер-пароль" required autocomplete="current-password">
+        </label>
 
-    <div class="row">
-      <label>
-        Сайт / домен
-        <input type="text" name="site" value="{{ site }}" placeholder="example.com">
-      </label>
-      <label>
-        Логин
-        <input type="text" name="login" value="{{ login }}" placeholder="you@mail.com">
-      </label>
-    </div>
+        <label>
+          Сайт / домен
+          <input type="text" name="site" value="{{ site }}" placeholder="example.com">
+        </label>
 
-    <div class="row">
-      <label>
-        Профиль (для создания записи)
-        <select name="profile">
-          {% for p in profiles %}
-            <option value="{{ p }}" {% if profile==p %}selected{% endif %}>{{ p }}</option>
+        <label>
+          Логин
+          <input type="text" name="login" value="{{ login }}" placeholder="you@mail.com">
+        </label>
+
+        <label>
+          Профиль (для создания записи)
+          <select name="profile">
+            {% for p in profiles %}
+              <option value="{{ p }}" {% if profile==p %}selected{% endif %}>{{ p }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label>
+          Переопределить длину при генерации (опц.)
+          <input type="number" min="4" max="128" name="length" value="{{ length_override }}">
+        </label>
+
+        <div class="actions">
+          <button class="btn primary" type="submit" name="action" value="generate">Сгенерировать</button>
+          <button class="btn" type="submit" name="action" value="add_entry">Создать запись (по профилю)</button>
+          <button class="btn ghost" type="submit" name="action" value="rotate_c">Ротация c+1</button>
+          <button class="btn ghost" type="submit" name="action" value="rotate_rseed">Новый rseed</button>
+          <button class="btn ghost" type="submit" name="action" value="list">Обновить список</button>
+          <button class="btn ghost" type="submit" name="action" value="init_vault">Создать вольт (если отсутствует)</button>
+        </div>
+      </form>
+
+      {% if entries %}
+        <div class="hint">Сайты в хранилище</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Сайт</th><th>Логин</th><th>Длина</th><th>Классы</th><th>c</th><th>Версия</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for item in entries %}
+            <tr>
+              <td>{{ item.site_id }}</td>
+              <td>{{ item.login }}</td>
+              <td>{{ item.policy.length }}</td>
+              <td>{{ ','.join(item.policy.classes) }}</td>
+              <td><span class="badge">c={{ item.c }}</span></td>
+              <td>{{ item.v }}</td>
+            </tr>
           {% endfor %}
-        </select>
-      </label>
-      <label>
-        Переопределить длину при генерации (опц.)
-        <input type="number" min="4" max="128" name="length" value="{{ length_override }}">
-      </label>
+          </tbody>
+        </table>
+      {% endif %}
     </div>
+  </div>
 
-    <div class="buttons">
-      <button type="submit" name="action" value="generate">Сгенерировать</button>
-      <button type="submit" name="action" value="add_entry">Создать запись (по профилю)</button>
-      <button type="submit" name="action" value="rotate_c">Ротация c+1</button>
-      <button type="submit" name="action" value="rotate_rseed">Новый rseed</button>
-      <button type="submit" name="action" value="list">Обновить список</button>
-      <button type="submit" name="action" value="init_vault">Создать вольт (если отсутствует)</button>
-    </div>
-  </form>
+  <script>
+    // Кнопки: ripple-эффект
+    for (const b of document.querySelectorAll('.btn')) {
+      b.addEventListener('click', e => {
+        const r = document.createElement('span');
+        r.className = 'ink';
+        const rect = b.getBoundingClientRect();
+        const x = e.clientX - rect.left, y = e.clientY - rect.top;
+        r.style.left = (x-10)+'px'; r.style.top = (y-10)+'px';
+        r.style.width = r.style.height = Math.max(rect.width, rect.height)+'px';
+        b.appendChild(r); setTimeout(()=>r.remove(), 600);
+      }, {passive:true});
+    }
 
-  {% if entries %}
-    <table>
-      <caption>Сайты в хранилище</caption>
-      <thead>
-        <tr>
-          <th>Сайт</th>
-          <th>Логин</th>
-          <th>Длина</th>
-          <th>Классы</th>
-          <th>c</th>
-          <th>Версия</th>
-        </tr>
-      </thead>
-      <tbody>
-      {% for item in entries %}
-        <tr>
-          <td>{{ item.site_id }}</td>
-          <td>{{ item.login }}</td>
-          <td>{{ item.policy.length }}</td>
-          <td>{{ ','.join(item.policy.classes) }}</td>
-          <td>{{ item.c }}</td>
-          <td>{{ item.v }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  {% endif %}
+    // Тосты: авто-схлопывание
+    const toasts = document.getElementById('toasts');
+    if (toasts) {
+      for (const t of [...toasts.children]) {
+        setTimeout(()=>{ t.style.transition='opacity .4s, transform .4s';
+                         t.style.opacity='0'; t.style.transform='translateY(-6px)';
+                         setTimeout(()=>t.remove(), 420); }, 4200);
+      }
+    }
+
+    // Пароль: показать/скрыть и копировать
+    const pwd = document.getElementById('pwd');
+    const toggle = document.getElementById('toggle');
+    const copy = document.getElementById('copy');
+    if (pwd && toggle) toggle.onclick = () => { pwd.type = (pwd.type==='password'?'text':'password'); };
+    if (pwd && copy) copy.onclick = async () => {
+      pwd.select(); try { await navigator.clipboard.writeText(pwd.value); pulse(copy, '✔'); } catch(e){ pulse(copy,'⚠'); }
+    };
+    function pulse(btn, glyph){
+      const old = btn.textContent; btn.textContent = glyph;
+      btn.style.boxShadow='0 0 0 6px #10b98133'; setTimeout(()=>{ btn.style.boxShadow=''; btn.textContent=old; }, 900);
+    }
+
+    // Искры при наличии пароля
+    if (pwd) sparkles(pwd.closest('.result'));
+    function sparkles(host){
+      const N=20; for(let i=0;i<N;i++){
+        const s=document.createElement('span'); s.style.position='absolute';
+        s.style.width=s.style.height=(6+Math.random()*6)+'px';
+        s.style.background=['#22d3ee','#60a5fa','#34d399','#f472b6'][i%4];
+        s.style.borderRadius='99px'; s.style.filter='blur(.2px)';
+        const b=host.getBoundingClientRect();
+        s.style.left=(b.width/2-8)+'px'; s.style.top='-10px';
+        s.style.transform=`translate(${(Math.random()*2-1)*220}px, ${40+Math.random()*60}px)`;
+        s.style.opacity='0'; s.style.transition='transform .9s cubic-bezier(.2,.7,.1,1), opacity .9s';
+        host.style.position='relative'; host.appendChild(s);
+        requestAnimationFrame(()=>{ s.style.opacity='.95'; s.style.transform=`translate(${(Math.random()*2-1)*220}px, ${120+Math.random()*80}px)`; });
+        setTimeout(()=>s.remove(), 1000);
+      }
+    }
+  </script>
 </body>
 </html>
 """
